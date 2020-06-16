@@ -15,8 +15,8 @@ class MapperTest < ActiveSupport::TestCase
     @permanent_test_files = SafePath.new('permanent_test_files')
   end
 
-  format_mapping = { 'format' => 'dd/mm/yyyy' }
-  format_mapping_yyyymmdd = { 'format' => 'yyyymmdd' }
+  format_mapping = { 'cast' => 'date', 'format' => 'dd/mm/yyyy' }
+  format_mapping_yyyymmdd = { 'cast' => 'date', 'format' => 'yyyymmdd' }
   clean_name_mapping = { 'clean' => :name }
   clean_ethniccategory_mapping = { 'clean' => :ethniccategory }
   clean_icd_mapping = { 'clean' => :icd }
@@ -376,6 +376,36 @@ class MapperTest < ActiveSupport::TestCase
     assert_equal %w(RGT01 RGT01), mapped_value['hospital']
   end
 
+  test 'map should extract and cast with format' do
+    extract_and_format_mapping = format_mapping.merge('match' => 'a(.*)z')
+    assert_equal Date.new(2011, 1, 25),
+                 TestMapper.new.mapped_value('a25/01/2011z', extract_and_format_mapping)
+  end
+
+  test 'map should require format with date cast' do
+    date_cast_mapping = { 'cast' => 'date' }
+
+    exception = assert_raises(ArgumentError) do
+      TestMapper.new.mapped_value('25/01/2011', date_cast_mapping)
+    end
+    assert_match(/'format' not specified/, exception.message)
+
+    date_cast_mapping['format'] = 'yy/mm/dddd'
+
+    assert_equal Date.new(2011, 1, 25),
+                 TestMapper.new.mapped_value('25/01/2011', date_cast_mapping)
+  end
+
+  test 'map should cast to integer' do
+    assert_equal 1, TestMapper.new.mapped_value('1', { 'cast' => 'integer' })
+    assert_equal 1, TestMapper.new.mapped_value('1.1', { 'cast' => 'integer' })
+    assert_equal [1, 2, 3], TestMapper.new.mapped_value(%w[1 2 3], { 'cast' => 'integer' })
+  end
+
+  test 'map should cast to float' do
+    assert_equal 1.3, TestMapper.new.mapped_value('1.3', { 'cast' => 'float' })
+  end
+
   test 'should raise an error on blank mandatory field' do
     exception = assert_raise(NdrImport::MissingFieldError) do
       TestMapper.new.mapped_line(['', 'RGT01'], validates_presence_mapping)
@@ -618,10 +648,13 @@ class MapperTest < ActiveSupport::TestCase
   end
 
   test 'line mapping should map date formats correctly' do
+    mapping = date_mapping.dup
+    TestMapper.new.send(:validate_line_mappings, mapping)
+
     real_date = Date.new(1927, 7, 6)
     incomings = %w( 06/07/1927  19270706     07/06/1927   06/07/27  06/JUL/27 )
     columns   = %w( dateofbirth receiveddate americandate shortdate funkydate )
-    line_hash = TestMapper.new.mapped_line(incomings, date_mapping)
+    line_hash = TestMapper.new.mapped_line(incomings, mapping)
 
     columns.each do |column_name|
       assert_equal real_date, line_hash[column_name].to_date
@@ -672,5 +705,16 @@ class MapperTest < ActiveSupport::TestCase
     assert_raise(RuntimeError) do
       TestMapper.new.mapped_line(['A'], invalid_decode_mapping)
     end
+  end
+
+  test 'should add in implicit casts when validating' do
+    line_mapping = [
+      { 'mappings' => [{ 'cast' => 'integer' }] },
+      { 'mappings' => [{ 'format' => 'dd/mm/yyy' }] },
+      { 'mappings' => [{ 'map' => { 'A' => 'B' } }] }
+    ]
+
+    TestMapper.new.send(:validate_line_mappings, line_mapping)
+    assert_equal %w[integer date string], line_mapping.map { |field| field['mappings'][0]['cast'] }
   end
 end

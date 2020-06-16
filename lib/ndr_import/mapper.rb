@@ -9,7 +9,10 @@ require 'docx'
 module NdrImport::Mapper
   # The mapper runs nested loops that can result in the allocation of millions
   # of short-lived objects. By pre-allocating these known keys, we can reduce GC pressure.
+  #
+  # TODO: can we just use a frozen_string_literal magic comment?
   module Strings
+    CAST             = 'cast'.freeze
     CLEAN            = 'clean'.freeze
     COLUMN           = 'column'.freeze
     COMPACT          = 'compact'.freeze
@@ -30,6 +33,13 @@ module NdrImport::Mapper
     STANDARD_MAPPING = 'standard_mapping'.freeze
     UNPACK_PATTERN   = 'unpack_pattern'.freeze
     VALIDATES        = 'validates'.freeze
+
+    CASTS = {
+      string: 'string',
+      integer: 'integer',
+      float: 'float',
+      date: 'date'
+    }.freeze
   end
 
   private
@@ -123,6 +133,7 @@ module NdrImport::Mapper
         # create a duplicate of the raw value we can manipulate
         original_value = raw_value ? raw_value.dup : nil
 
+        # TODO: should arrays be handled here just once?
         replace_before_mapping(original_value, field_mapping)
         value = mapped_value(original_value, field_mapping)
 
@@ -177,15 +188,11 @@ module NdrImport::Mapper
   end
 
   def mapped_value(original_value, field_mapping)
-    if field_mapping.include?(Strings::FORMAT)
-      begin
-        return original_value.blank? ? nil : original_value.to_date(field_mapping[Strings::FORMAT])
-      rescue ArgumentError => e
-        e2 = ArgumentError.new("#{e} value #{original_value.inspect}")
-        e2.set_backtrace(e.backtrace)
-        raise e2
-      end
-    elsif field_mapping.include?(Strings::CLEAN)
+    cast_value(apply_first_mapping(original_value, field_mapping), field_mapping)
+  end
+
+  def apply_first_mapping(original_value, field_mapping)
+    if field_mapping.include?(Strings::CLEAN)
       return nil if original_value.blank?
 
       cleaners = Array(field_mapping[Strings::CLEAN])
@@ -198,7 +205,9 @@ module NdrImport::Mapper
       matches = Regexp.new(field_mapping[Strings::MATCH]).match(original_value)
       return matches[1].strip if matches && matches.size > 0
     elsif field_mapping.include?(Strings::DAYSAFTER)
+      # TODO: should return nil rather than epoch, but not arbitrary values with casting
       return original_value unless original_value.to_i.to_s == original_value.to_s
+      # TODO: move to casting
       return original_value.to_i.days.since(field_mapping[Strings::DAYSAFTER].to_time).to_date
     else
       return nil if original_value.blank?
@@ -206,7 +215,42 @@ module NdrImport::Mapper
     end
   end
 
+  def cast_value(original_value, field_mapping)
+    if original_value.is_a?(Array)
+      return original_value.map { |value| cast_value(value, field_mapping) }
+    end
+
+    format = field_mapping[Strings::FORMAT]
+    cast_as = field_mapping[Strings::CAST]
+
+    return original_value unless cast_as
+    return nil if original_value.blank?
+
+    case cast_as
+    when Strings::CASTS[:integer]
+      original_value.to_i
+    when Strings::CASTS[:float]
+      original_value.to_f
+    when Strings::CASTS[:string]
+      original_value.to_s
+    when Strings::CASTS[:date]
+      raise ArgumentError, "'format' not specified" if format.blank?
+
+      begin
+        original_value.to_date(format)
+      rescue ArgumentError => e
+        e2 = ArgumentError.new("#{e} value #{original_value.inspect}")
+        e2.set_backtrace(e.backtrace)
+        raise e2
+      end
+    else
+      raise ArgumentError, "unsupported 'cast': #{cast_as}"
+    end
+  end
+
   # Check for duplicate priorities, check for nonexistent standard_mappings
+  # TODO: support one-time mapping "compilation", so defaults can be mixed in,
+  #       and any validations don't have to be run for every use of the mapping.
   def validate_line_mappings(line_mappings)
     priority = {}
     line_mappings.each do |column_mapping|
@@ -218,6 +262,13 @@ module NdrImport::Mapper
 
       next unless column_mapping.key?(Strings::MAPPINGS)
       column_mapping[Strings::MAPPINGS].each do |field_mapping|
+        # add in implicit casts:
+        if field_mapping.key?(Strings::FORMAT) || field_mapping.key?(Strings::DAYSAFTER)
+          field_mapping[Strings::CAST] ||= Strings::CASTS[:date]
+          # TODO: raise if other cast chosen
+        end
+        field_mapping[Strings::CAST] ||= Strings::CASTS[:string]
+
         field = field_mapping[Strings::FIELD]
         if field_mapping[Strings::PRIORITY]
           fail 'Cannot have duplicate priorities' if priority[field] == field_mapping[Strings::PRIORITY]
