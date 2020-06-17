@@ -710,11 +710,23 @@ class MapperTest < ActiveSupport::TestCase
   test 'should add in implicit casts when validating' do
     line_mapping = [
       { 'mappings' => [{ 'cast' => 'integer' }] },
-      { 'mappings' => [{ 'format' => 'dd/mm/yyy' }] },
+      { 'mappings' => [{ 'format' => 'dd/mm/yyyy' }] },
       { 'mappings' => [{ 'map' => { 'A' => 'B' } }] }
     ]
 
     TestMapper.new.send(:validate_line_mappings, line_mapping)
     assert_equal %w[integer date string], line_mapping.map { |field| field['mappings'][0]['cast'] }
+  end
+
+  test 'it should validate cast types' do
+    line_mapping = [
+      { 'mappings' => [{ 'format' => 'dd/mm/yyyy', 'cast' => 'integer' }] },
+    ]
+
+    exception = assert_raises do
+      TestMapper.new.send(:validate_line_mappings, line_mapping)
+    end
+
+    assert_match(/Invalid cast value/, exception.message)
   end
 end

@@ -264,8 +264,9 @@ module NdrImport::Mapper
       column_mapping[Strings::MAPPINGS].each do |field_mapping|
         # add in implicit casts:
         if field_mapping.key?(Strings::FORMAT) || field_mapping.key?(Strings::DAYSAFTER)
-          field_mapping[Strings::CAST] ||= Strings::CASTS[:date]
-          # TODO: raise if other cast chosen
+          date = Strings::CASTS[:date]
+          field_mapping[Strings::CAST] ||= date
+          fail 'Invalid cast value' unless field_mapping[Strings::CAST] == date
         end
         field_mapping[Strings::CAST] ||= Strings::CASTS[:string]
 
