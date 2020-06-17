@@ -205,8 +205,7 @@ module NdrImport::Mapper
       matches = Regexp.new(field_mapping[Strings::MATCH]).match(original_value)
       return matches[1].strip if matches && matches.size > 0
     elsif field_mapping.include?(Strings::DAYSAFTER)
-      # TODO: should return nil rather than epoch, but not arbitrary values with casting
-      return original_value unless original_value.to_i.to_s == original_value.to_s
+      return nil unless original_value.to_i.to_s == original_value.to_s
       # TODO: move to casting
       return original_value.to_i.days.since(field_mapping[Strings::DAYSAFTER].to_time).to_date
     else
