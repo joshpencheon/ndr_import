@@ -24,7 +24,7 @@ class MapperTest < ActiveSupport::TestCase
   clean_code_and_upcase_mapping = { 'clean' => [:code, :upcase] }
   map_mapping = { 'map' => { 'A' => '1' } }
   replace_mapping = { 'replace' => { '.0' => '' } }
-  daysafter_mapping = { 'daysafter' => '2012-05-16' }
+  daysafter_mapping = { 'cast' => 'date', 'daysafter' => '2012-05-16' }
   # TODO: match_mapping = {}
 
   simple_mapping = [{ 'column' => 'patient address', 'mappings' => ['field' => 'address'] }]
@@ -388,7 +388,7 @@ class MapperTest < ActiveSupport::TestCase
     exception = assert_raises(ArgumentError) do
       TestMapper.new.mapped_value('25/01/2011', date_cast_mapping)
     end
-    assert_match(/'format' not specified/, exception.message)
+    assert_match(/Neither 'format' nor 'daysafter' specified/, exception.message)
 
     date_cast_mapping['format'] = 'yy/mm/dddd'
 
@@ -426,11 +426,11 @@ class MapperTest < ActiveSupport::TestCase
     # Answer independently checked http://www.wolframalpha.com/input/?i=2012-05-16+%2B+9379+days
     assert_equal Date.new(2038, 1, 19), TestMapper.new.mapped_value(9379, daysafter_mapping)
     assert_equal Date.new(1946, 5, 11),
-                 TestMapper.new.mapped_value(16_900, 'daysafter' => '1900-02-01')
+                 TestMapper.new.mapped_value(16_900, 'daysafter' => '1900-02-01', 'cast' => 'date')
     assert_equal Date.new(2014, 4, 8),
-                 TestMapper.new.mapped_value(16_900, 'daysafter' => '1967-12-31')
+                 TestMapper.new.mapped_value(16_900, 'daysafter' => '1967-12-31', 'cast' => 'date')
     assert_equal Date.new(2046, 4, 9),
-                 TestMapper.new.mapped_value(16_900, 'daysafter' => '2000-01-01')
+                 TestMapper.new.mapped_value(16_900, 'daysafter' => '2000-01-01', 'cast' => 'date')
   end
 
   test 'line mapping should create valid hash' do
@@ -711,11 +711,12 @@ class MapperTest < ActiveSupport::TestCase
     line_mapping = [
       { 'mappings' => [{ 'cast' => 'integer' }] },
       { 'mappings' => [{ 'format' => 'dd/mm/yyyy' }] },
+      { 'mappings' => [{ 'daysafter' => '2012-05-16' }] },
       { 'mappings' => [{ 'map' => { 'A' => 'B' } }] }
     ]
 
     TestMapper.new.send(:validate_line_mappings, line_mapping)
-    assert_equal %w[integer date string], line_mapping.map { |field| field['mappings'][0]['cast'] }
+    assert_equal %w[integer date date string], line_mapping.map { |field| field['mappings'][0]['cast'] }
   end
 
   test 'it should validate cast types' do

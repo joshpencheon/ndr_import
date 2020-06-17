@@ -204,10 +204,6 @@ module NdrImport::Mapper
       # may need to be escaped
       matches = Regexp.new(field_mapping[Strings::MATCH]).match(original_value)
       return matches[1].strip if matches && matches.size > 0
-    elsif field_mapping.include?(Strings::DAYSAFTER)
-      return nil unless original_value.to_i.to_s == original_value.to_s
-      # TODO: move to casting
-      return original_value.to_i.days.since(field_mapping[Strings::DAYSAFTER].to_time).to_date
     else
       return nil if original_value.blank?
       return original_value.is_a?(String) ? original_value.strip : original_value
@@ -220,6 +216,7 @@ module NdrImport::Mapper
     end
 
     format = field_mapping[Strings::FORMAT]
+    daysafter = field_mapping[Strings::DAYSAFTER]
     cast_as = field_mapping[Strings::CAST]
 
     return original_value unless cast_as
@@ -233,10 +230,18 @@ module NdrImport::Mapper
     when Strings::CASTS[:string]
       original_value.to_s
     when Strings::CASTS[:date]
-      raise ArgumentError, "'format' not specified" if format.blank?
+      if format.blank? && daysafter.blank?
+        raise ArgumentError, "Neither 'format' nor 'daysafter' specified"
+      end
 
       begin
-        original_value.to_date(format)
+        if format.present?
+          original_value.to_date(format)
+        elsif original_value.to_i.to_s == original_value.to_s
+          original_value.to_i.days.since(daysafter.to_time).to_date
+        else
+          # non-sensical value
+        end
       rescue ArgumentError => e
         e2 = ArgumentError.new("#{e} value #{original_value.inspect}")
         e2.set_backtrace(e.backtrace)
