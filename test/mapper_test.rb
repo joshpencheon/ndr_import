@@ -399,7 +399,16 @@ class MapperTest < ActiveSupport::TestCase
   test 'map should cast to integer' do
     assert_equal 1, TestMapper.new.mapped_value('1', { 'cast' => 'integer' })
     assert_equal 1, TestMapper.new.mapped_value('1.1', { 'cast' => 'integer' })
-    assert_equal [1, 2, 3], TestMapper.new.mapped_value(%w[1 2 3], { 'cast' => 'integer' })
+  end
+
+  test 'map should operate on array elements' do
+    line_mapping = [{
+      'column' => 'their_list',
+      'mappings' => [{ 'cast' => 'integer', 'field' => 'my_array' }]
+    }]
+
+    output = TestMapper.new.mapped_line([%w[1 2 3]], line_mapping)
+    assert_equal [1, 2, 3], output['my_array']
   end
 
   test 'map should cast to float' do

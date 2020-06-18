@@ -65,11 +65,7 @@ module NdrImport::Mapper
   end
 
   def apply_replaces(value, replaces)
-    if value.is_a?(Array)
-      value.each { |val| apply_replaces(val, replaces) }
-    else
-      replaces.each { |pattern, replacement| value.gsub!(pattern, replacement) }
-    end
+    replaces.each { |pattern, replacement| value.gsub!(pattern, replacement) }
   end
 
   # Returns the standard_mapping hash specified
@@ -133,9 +129,16 @@ module NdrImport::Mapper
         # create a duplicate of the raw value we can manipulate
         original_value = raw_value ? raw_value.dup : nil
 
-        # TODO: should arrays be handled here just once?
-        replace_before_mapping(original_value, field_mapping)
-        value = mapped_value(original_value, field_mapping)
+        value =
+          if original_value.is_a?(Array)
+            original_value.map do |original_val|
+              replace_before_mapping(original_val, field_mapping)
+              mapped_value(original_val, field_mapping)
+            end
+          else
+            replace_before_mapping(original_value, field_mapping)
+            mapped_value(original_value, field_mapping)
+          end
 
         validations = field_mapping[Strings::VALIDATES].presence
         apply_validations_on(field_mapping[Strings::FIELD], value, validations) if validations
@@ -211,10 +214,6 @@ module NdrImport::Mapper
   end
 
   def cast_value(original_value, field_mapping)
-    if original_value.is_a?(Array)
-      return original_value.map { |value| cast_value(value, field_mapping) }
-    end
-
     format = field_mapping[Strings::FORMAT]
     daysafter = field_mapping[Strings::DAYSAFTER]
     cast_as = field_mapping[Strings::CAST]
